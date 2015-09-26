@@ -1,0 +1,1 @@
+For Golang script
