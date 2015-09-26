@@ -37,7 +37,7 @@ def parse_module():
     eles = soup.find('div',id='category_1').findAll('h4',{'class':'forum_name'})
     for ele in eles:
         url = ele.strong.a['href']
-        print url
+        #print url
         
         #parse topic for submodule
         parse_subforum_topic(url)
@@ -49,8 +49,8 @@ def parse_module():
         for i in range(1,totalpage+1):
             posturl = url+'page-'+str(i)+'?prune_day=100&sort_by=Z-A&sort_key=last_post&topicfilter=all'
             parse_topics(posturl)
+
     
-#     parse_information('http://www.crackingcore.com/topic/77557-trusted-seller-section/')
 def parse_subforum_topic(url):
     soup = BeautifulSoup(request.get(url).content,'html.parser')
     links = soup.findAll('div',{'class':'f_name'})
@@ -64,28 +64,26 @@ def parse_subforum_topic(url):
                 parse_topics(posturl)
 
 def parse_topics(url):
+    print '-------------------parsing topic:\t',url
     soup2 = BeautifulSoup(request.get(url).content,'html.parser')
     threads = soup2.findAll('tr',{'itemtype':'http://schema.org/Article'})
     for thread in threads:
+        #print thread.find('a',{'itemprop':'url'})['href']
         parse_posts(thread.find('a',{'itemprop':'url'})['href'])
 
-threads = []
-posts = []
 def parse_posts(url):
     
     totalpage = parse_totalpage(url)
     
+    threadid = str(uuid.uuid4()).replace('-', '')
+    postlists = []
     for i in range(1,totalpage+1):
         
         postsurl = url+'page-'+str(i)
         soup2 = BeautifulSoup(request.get(postsurl).content,'html.parser')
         
-        threadid = str(uuid.uuid4()).replace('-', '')
-        postlists = []
-        
         if i == 1:#parse the title
             topic = Thread(threadid,soup2.find('h1',{'class':'ipsType_pagetitle'}).getText().strip(),url)
-            threads.append(topic)
         posteles = soup2.findAll('div',id=re.compile('^post_id_\d+'))
         for postele in posteles:
             postid = postele['id']
@@ -100,15 +98,12 @@ def parse_posts(url):
                     bodystr +='\n' + body.getText().strip()
             post = Post(postid,threadid,posttime,membername,bodystr)
             postlists.append(post)
-        posts.append(postlists)
-        logging.info("Finished parse topic\t"+topic.name+'\t<=========>\t'+url+'\ttotal posts:\t'+str(len(postlists)))  
+    logging.info("Finished parse topic\t"+topic.name+'\t<=========>\t'+url+'\ttotal posts:\t'+str(len(postlists)))  
     
 
 if __name__=="__main__":
     starttime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     parse_module()
-    print 'threads number:\t',len(threads)
-    print 'posts number:\t',len(posts)
     endtime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print '********start time:\t',starttime
     print '********end time:\t',endtime
