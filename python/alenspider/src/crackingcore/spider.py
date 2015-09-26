@@ -81,11 +81,11 @@ def parse_posts(url):
         soup2 = BeautifulSoup(request.get(postsurl).content,'html.parser')
         
         threadid = str(uuid.uuid4()).replace('-', '')
+        postlists = []
         
         if i == 1:#parse the title
-            theme = Thread(threadid,soup2.find('h1',{'class':'ipsType_pagetitle'}).getText().strip(),url)
-            threads.append(theme)
-            logging.info("parsing thread:\t"+theme.name+'\t<=========>\t'+url)
+            topic = Thread(threadid,soup2.find('h1',{'class':'ipsType_pagetitle'}).getText().strip(),url)
+            threads.append(topic)
         posteles = soup2.findAll('div',id=re.compile('^post_id_\d+'))
         for postele in posteles:
             postid = postele['id']
@@ -99,14 +99,14 @@ def parse_posts(url):
                 else:
                     bodystr +='\n' + body.getText().strip()
             post = Post(postid,threadid,posttime,membername,bodystr)
-            posts.append(post)        
+            postlists.append(post)
+        posts.append(postlists)
+        logging.info("Finished parse topic\t"+topic.name+'\t<=========>\t'+url+'\ttotal posts:\t'+str(len(postlists)))  
     
 
 if __name__=="__main__":
     starttime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     parse_module()
-#     soup = BeautifulSoup(request.get('http://www.crackingcore.com/forum/4-staff-information-applications/page-1?prune_day=100&sort_by=Z-A&sort_key=last_post&topicfilter=all').content,'html.parser')
-#     parse_subforum_topic(soup)
     print 'threads number:\t',len(threads)
     print 'posts number:\t',len(posts)
     endtime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
