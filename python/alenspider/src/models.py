@@ -10,7 +10,7 @@ from sqlalchemy import  Column,String,DateTime
 
 Base = declarative_base()
 
-class Thread(Base):
+class Topic(Base):
     __tablename__ = 'thread'
 
     tid = Column('id',String(36),primary_key=True)

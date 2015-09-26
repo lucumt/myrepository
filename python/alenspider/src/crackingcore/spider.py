@@ -12,7 +12,7 @@ import logging
 import threading
 
 from bs4 import BeautifulSoup
-from models import Thread,Post
+from models import Topic,Post
 
 logging.basicConfig(level=logging.INFO,format='%(asctime)s %(message)s',datefmt='%Y-%m-%d %H:%M:%S')
 
@@ -38,7 +38,6 @@ def parse_module():
     eles = soup.find('div',id='category_1').findAll('h4',{'class':'forum_name'})
     for ele in eles:
         url = ele.strong.a['href']
-        #print url
         
         #parse topic for submodule
         parse_subforum_topic(url)
@@ -67,16 +66,15 @@ def parse_subforum_topic(url):
 def parse_topics(url):
     print '-------------------parsing page:\t',url
     soup2 = BeautifulSoup(request.get(url).content,'html.parser')
-    threads = soup2.findAll('tr',{'itemtype':'http://schema.org/Article'})
-    for thread in threads:
-        #print thread.find('a',{'itemprop':'url'})['href']
-        parse_posts(thread.find('a',{'itemprop':'url'})['href'])
+    topics = soup2.findAll('tr',{'itemtype':'http://schema.org/Article'})
+    for topic in topics:
+        parse_posts(topic.find('a',{'itemprop':'url'})['href'])
 
 def parse_posts(url):
     
     totalpage = parse_totalpage(url)
     
-    threadid = str(uuid.uuid4()).replace('-', '')
+    tid = str(uuid.uuid4()).replace('-', '')
     postlists = []
     for i in range(1,totalpage+1):
         
@@ -84,7 +82,7 @@ def parse_posts(url):
         soup2 = BeautifulSoup(request.get(postsurl).content,'html.parser')
         
         if i == 1:#parse the title
-            topic = Thread(threadid,soup2.find('h1',{'class':'ipsType_pagetitle'}).getText().strip(),url)
+            topic = Topic(tid,soup2.find('h1',{'class':'ipsType_pagetitle'}).getText().strip(),url)
         posteles = soup2.findAll('div',id=re.compile('^post_id_\d+'))
         for postele in posteles:
             postid = postele['id']
@@ -97,7 +95,7 @@ def parse_posts(url):
                     bodystr = body.getText().strip()
                 else:
                     bodystr +='\n' + body.getText().strip()
-            post = Post(postid,threadid,posttime,membername,bodystr)
+            post = Post(postid,tid,posttime,membername,bodystr)
             postlists.append(post)
     logging.info("Finished parse topic\t"+topic.name+'\t<=========>\t'+url+'\ttotal posts:\t'+str(len(postlists)))  
     
