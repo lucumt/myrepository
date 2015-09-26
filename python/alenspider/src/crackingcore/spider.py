@@ -9,6 +9,7 @@ import requests
 import re
 import uuid
 import logging
+import threading
 
 from bs4 import BeautifulSoup
 from models import Thread,Post
@@ -48,8 +49,8 @@ def parse_module():
         #parse topic in each page       
         for i in range(1,totalpage+1):
             posturl = url+'page-'+str(i)+'?prune_day=100&sort_by=Z-A&sort_key=last_post&topicfilter=all'
-            parse_topics(posturl)
-
+            t = threading.Thread(target=parse_topics, args=(posturl,))
+            t.start()
     
 def parse_subforum_topic(url):
     soup = BeautifulSoup(request.get(url).content,'html.parser')
@@ -64,7 +65,7 @@ def parse_subforum_topic(url):
                 parse_topics(posturl)
 
 def parse_topics(url):
-    print '-------------------parsing topic:\t',url
+    print '-------------------parsing page:\t',url
     soup2 = BeautifulSoup(request.get(url).content,'html.parser')
     threads = soup2.findAll('tr',{'itemtype':'http://schema.org/Article'})
     for thread in threads:
