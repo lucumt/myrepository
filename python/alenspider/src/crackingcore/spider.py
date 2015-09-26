@@ -9,15 +9,23 @@ import requests
 import re
 import uuid
 import logging
-import threading
+import time
 
 from bs4 import BeautifulSoup
+from threading import Thread
+from Queue import Queue
+
 from models import Topic,Post
+
+concurrent=10
+q = Queue(concurrent*2)
 
 logging.basicConfig(level=logging.INFO,format='%(asctime)s %(message)s',datefmt='%Y-%m-%d %H:%M:%S')
 
 request = requests.Session()
 request.headers['User-Agent'] = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.131 Safari/537.36'
+adapter = requests.adapters.HTTPAdapter(pool_connections=100, pool_maxsize=100)
+request.mount('http://', adapter)
 
 def parse_totalpage(url):
     soup = BeautifulSoup(request.get(url).content,'html.parser')
@@ -35,7 +43,7 @@ def parse_module():
     soup = BeautifulSoup(response.content,'html.parser')
     
     #parse information
-    eles = soup.find('div',id='category_1').findAll('h4',{'class':'forum_name'})
+    eles = soup.find('div',id='category_80').findAll('h4',{'class':'forum_name'})
     for ele in eles:
         url = ele.strong.a['href']
         
@@ -48,8 +56,9 @@ def parse_module():
         #parse topic in each page       
         for i in range(1,totalpage+1):
             posturl = url+'page-'+str(i)+'?prune_day=100&sort_by=Z-A&sort_key=last_post&topicfilter=all'
-            t = threading.Thread(target=parse_topics, args=(posturl,))
-            t.start()
+            q.put(posturl)
+    q.join()
+            
     
 def parse_subforum_topic(url):
     soup = BeautifulSoup(request.get(url).content,'html.parser')
@@ -61,7 +70,7 @@ def parse_subforum_topic(url):
             totalpage = parse_totalpage(url)
             for i in range(1,totalpage+1):
                 posturl = url+'page-'+str(i)+'?prune_day=100&sort_by=Z-A&sort_key=last_post&topicfilter=all'
-                parse_topics(posturl)
+                q.put(posturl)
 
 def parse_topics(url):
     print '-------------------parsing page:\t',url
@@ -98,10 +107,20 @@ def parse_posts(url):
             post = Post(postid,tid,posttime,membername,bodystr)
             postlists.append(post)
     logging.info("Finished parse topic\t"+topic.name+'\t<=========>\t'+url+'\ttotal posts:\t'+str(len(postlists)))  
-    
+  
+def dowork():
+    while True:
+        url = q.get()
+        parse_topics(url)
+        q.task_done()
+        time.sleep(2)  
 
 if __name__=="__main__":
     starttime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    for i in range(concurrent):
+        t = Thread(target=dowork)
+        t.daemon = True
+        t.start()
     parse_module()
     endtime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print '********start time:\t',starttime
