@@ -14,10 +14,13 @@ import time
 from bs4 import BeautifulSoup
 from threading import Thread
 from Queue import Queue
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import exc
 
 from models import Topic,Post
 
-concurrent=10
+concurrent=6
 q = Queue(concurrent*2)
 
 logging.basicConfig(level=logging.INFO,format='%(asctime)s %(message)s',datefmt='%Y-%m-%d %H:%M:%S')
@@ -26,6 +29,11 @@ request = requests.Session()
 request.headers['User-Agent'] = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.131 Safari/537.36'
 adapter = requests.adapters.HTTPAdapter(pool_connections=100, pool_maxsize=100)
 request.mount('http://', adapter)
+  
+engine = create_engine('mysql://root:123456@127.0.0.1/alen?charset=utf8')  # 定义引擎 
+Session = sessionmaker()
+Session.configure(bind= engine)
+session = Session()
 
 def parse_totalpage(url):
     soup = BeautifulSoup(request.get(url).content,'html.parser')
@@ -43,21 +51,25 @@ def parse_module():
     soup = BeautifulSoup(response.content,'html.parser')
     
     #parse information
-    eles = soup.find('div',id='category_80').findAll('h4',{'class':'forum_name'})
+    eles = soup.findAll('div', id=re.compile('^category_\d+'))
     for ele in eles:
-        url = ele.strong.a['href']
-        
-        #parse topic for submodule
-        parse_subforum_topic(url)
-        
-        #get the total page of each subitem
-        totalpage = parse_totalpage(url)
-        
-        #parse topic in each page       
-        for i in range(1,totalpage+1):
-            posturl = url+'page-'+str(i)+'?prune_day=100&sort_by=Z-A&sort_key=last_post&topicfilter=all'
-            q.put(posturl)
-    q.join()
+        itemid = ele['id']
+        if itemid == 'category_1':
+            items = soup.find('div',id='category_67').findAll('h4',{'class':'forum_name'})
+            for item in items:
+                url = item.strong.a['href']
+                 
+                #parse topic for submodule
+                parse_subforum_topic(url)
+                 
+                #get the total page of each subitem
+                totalpage = parse_totalpage(url)
+                 
+                #parse topic in each page       
+                for i in range(1,totalpage+1):
+                    posturl = url+'page-'+str(i)+'?prune_day=100&sort_by=Z-A&sort_key=last_post&topicfilter=all'
+                    q.put(posturl)
+            q.join()
             
     
 def parse_subforum_topic(url):
@@ -106,14 +118,22 @@ def parse_posts(url):
                     bodystr +='\n' + body.getText().strip()
             post = Post(postid,tid,posttime,membername,bodystr)
             postlists.append(post)
-    logging.info("Finished parse topic\t"+topic.name+'\t<=========>\t'+url+'\ttotal posts:\t'+str(len(postlists)))  
+    logging.info("Finished parse topic\t"+topic.name+'\t<=========>\t'+url+'\ttotal posts:\t'+str(len(postlists)))
+    session.add(topic)
+    session.bulk_save_objects(postlists)
   
 def dowork():
     while True:
         url = q.get()
         parse_topics(url)
         q.task_done()
-        time.sleep(2)  
+        try:
+            session.flush()
+            session.commit()
+        except exc.InvalidRequestError:
+            print '*********************commit failed,the url is:\t',url
+            session.rollback()
+        time.sleep(2) 
 
 if __name__=="__main__":
     starttime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
