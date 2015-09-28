@@ -30,10 +30,10 @@ request.headers['User-Agent'] = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_2) 
 adapter = requests.adapters.HTTPAdapter(pool_connections=100, pool_maxsize=100)
 request.mount('http://', adapter)
   
-engine = create_engine('mysql://root:123456@127.0.0.1/alen?charset=utf8')  # 定义引擎 
-Session = sessionmaker()
-Session.configure(bind= engine)
-session = Session()
+# engine = create_engine('mysql://root:123456@127.0.0.1/alen?charset=utf8')  # 定义引擎 
+# Session = sessionmaker()
+# Session.configure(bind= engine)
+# session = Session()
 
 def parse_totalpage(url):
     soup = BeautifulSoup(request.get(url).content,'html.parser')
@@ -119,20 +119,20 @@ def parse_posts(url):
             post = Post(postid,tid,posttime,membername,bodystr)
             postlists.append(post)
     logging.info("Finished parse topic\t"+topic.name+'\t<=========>\t'+url+'\ttotal posts:\t'+str(len(postlists)))
-    session.add(topic)
-    session.bulk_save_objects(postlists)
+#     session.add(topic)
+#     session.bulk_save_objects(postlists)
   
 def dowork():
     while True:
         url = q.get()
         parse_topics(url)
         q.task_done()
-        try:
-            session.flush()
-            session.commit()
-        except exc.InvalidRequestError:
-            print '*********************commit failed,the url is:\t',url
-            session.rollback()
+#         try:
+#             session.flush()
+#             session.commit()
+#         except exc.InvalidRequestError:
+#             print '*********************commit failed,the url is:\t',url
+#             session.rollback()
         time.sleep(2) 
 
 if __name__=="__main__":
