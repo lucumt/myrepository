@@ -95,20 +95,39 @@ def parse_posts(url):
     
     tid = str(uuid.uuid4()).replace('-', '')
     
+    Session = sessionmaker()
+    Session.configure(bind= engine)
+    session = Session()
+    
+    addtopic = True
+    addpost = True
+    topic = None
+    
     try:
         postlists = []
         for i in range(totalpage,0,-1):
             
+            if not addpost:
+                break
+            
             postsurl = url+'page-'+str(i)
             soup2 = BeautifulSoup(request.get(postsurl).content,'html.parser')
             
-            if i == 1:#parse the title
+            if i == totalpage:#parse the title
                 topic = Topic(tid,soup2.find('h1',{'class':'ipsType_pagetitle'}).getText().strip(),url)
+                topicnum =session.query(Topic).filter(Topic.name==topic.name).filter(Topic.url==url).count()
+                if topicnum > 0:
+                    addtopic = False
             posteles = soup2.findAll('div',id=re.compile('^post_id_\d+'))
             for postele in posteles:
                 postid = postele['id']
                 membername = postele.find('span',{'itemprop':'creator name'}).getText().strip()
                 posttime = postele.find('abbr',{'itemprop':'commentTime'})['title']
+                
+                postnum = session.query(Post).filter(Post.postid==postid).filter(Post.posttime==posttime).filter(Post.membername==membername).count()
+                if postnum >0:
+                    addpost = False
+                
                 bodystr = None
                 bodies = postele.find('div',{'class':'post_body'}).find('div',{'itemprop':'commentText'}).findAll('p',recursive=False)
                 for body in bodies:
@@ -117,22 +136,26 @@ def parse_posts(url):
                     else:
                         bodystr +='\n' + body.getText().strip()
                 post = Post(postid,tid,posttime,membername,bodystr)
-                postlists.append(post)
-        logging.info("Finished parse topic\t"+topic.name+'\t<=========>\t'+url+'\ttotal posts:\t'+str(len(postlists)))
-        Session = sessionmaker()
-        Session.configure(bind= engine)
-        session = Session()
+                
+                if postnum == 0:
+                    postlists.append(post)
         if topic:
-            session.add(topic)
+            logging.info("Finished parse topic\t"+topic.name+'\t<=========>\t'+url+'\ttotal posts:\t'+str(len(postlists)))
+            if addtopic:
+                session.add(topic)
         else:
-            print '++++++++++++++++++++++++++empty topic:\t',url
+            print '++++++++++++++++++++++++++no add topic:\t',url
+        
         if postlists:
             session.bulk_save_objects(postlists)
         else:
-            print '++++++++++++++++++++++++++empty posts,url:\t',url
-        session.flush()
-        session.commit()
+            print '++++++++++++++++++++++++++no add posts,url:\t',url
+        
+        if addtopic or postlists:
+            session.flush()
+            session.commit()
         session.close()
+        
     except exc.InvalidRequestError:
         print '*********************add failed,the url is:\t',url
         print traceback.format_exc()
