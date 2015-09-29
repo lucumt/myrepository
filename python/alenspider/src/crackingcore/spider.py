@@ -52,19 +52,19 @@ def parse_module():
     eles = soup.findAll('div', id=re.compile('^category_\d+'))
     for ele in eles:
         itemid = ele['id']
-        if itemid in ['category_1','category_5']:
-            items = soup.find('div',id == itemid).findAll('h4',{'class':'forum_name'})
+        if itemid in['category_1']:
+            items = soup.find('div',id = itemid).findAll('h4',{'class':'forum_name'})
             for item in items:
                 url = item.strong.a['href']
-                 
+                   
                 #parse topic for submodule
                 parse_subforum_topic(url)
-                 
+                   
                 #get the total page of each subitem
                 totalpage = parse_totalpage(url)
-                 
+                   
                 #parse topic in each page       
-                for i in range(1,totalpage+1):
+                for i in range(totalpage,0,-1):
                     posturl = url+'page-'+str(i)+'?prune_day=100&sort_by=Z-A&sort_key=last_post&topicfilter=all'
                     q.put(posturl)
             q.join()
@@ -78,7 +78,7 @@ def parse_subforum_topic(url):
         for link in links:
             url = link.find('a')['href'].strip()
             totalpage = parse_totalpage(url)
-            for i in range(1,totalpage+1):
+            for i in range(totalpage,0,-1):
                 posturl = url+'page-'+str(i)+'?prune_day=100&sort_by=Z-A&sort_key=last_post&topicfilter=all'
                 q.put(posturl)
 
@@ -97,7 +97,7 @@ def parse_posts(url):
     
     try:
         postlists = []
-        for i in range(1,totalpage+1):
+        for i in range(totalpage,0,-1):
             
             postsurl = url+'page-'+str(i)
             soup2 = BeautifulSoup(request.get(postsurl).content,'html.parser')
@@ -143,6 +143,7 @@ def dowork():
     while True:
         url = q.get()
         parse_topics(url)
+        print url
         q.task_done()
         time.sleep(2) 
 
