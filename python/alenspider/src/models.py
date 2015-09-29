@@ -31,7 +31,7 @@ class Post(Base):
     postid = Column('post_id',String(36),primary_key=True)
     topicid = Column('topic_id',String(36))
     posttime = Column('post_time',DateTime)
-    membername = Column('member_name',String(20))
+    membername = Column('member_name',String(100))
     body = Column('body',String(1000))
     
     def __init__(self,postid,topicid,posttime,membername,body):

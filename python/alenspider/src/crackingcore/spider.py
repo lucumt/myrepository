@@ -10,6 +10,7 @@ import re
 import uuid
 import logging
 import time
+import traceback
 
 from bs4 import BeautifulSoup
 from threading import Thread
@@ -30,10 +31,10 @@ request.headers['User-Agent'] = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_2) 
 adapter = requests.adapters.HTTPAdapter(pool_connections=100, pool_maxsize=100)
 request.mount('http://', adapter)
   
-# engine = create_engine('mysql://root:123456@127.0.0.1/alen?charset=utf8')  # 定义引擎 
-# Session = sessionmaker()
-# Session.configure(bind= engine)
-# session = Session()
+engine = create_engine('mysql://root:123456@127.0.0.1/alen?charset=utf8')  # 定义引擎 
+Session = sessionmaker()
+Session.configure(bind= engine)
+session = Session()
 
 def parse_totalpage(url):
     soup = BeautifulSoup(request.get(url).content,'html.parser')
@@ -54,8 +55,8 @@ def parse_module():
     eles = soup.findAll('div', id=re.compile('^category_\d+'))
     for ele in eles:
         itemid = ele['id']
-        if itemid == 'category_1':
-            items = soup.find('div',id='category_67').findAll('h4',{'class':'forum_name'})
+        if itemid in ['category_1','category_5']:
+            items = soup.find('div',id == itemid).findAll('h4',{'class':'forum_name'})
             for item in items:
                 url = item.strong.a['href']
                  
@@ -96,43 +97,56 @@ def parse_posts(url):
     totalpage = parse_totalpage(url)
     
     tid = str(uuid.uuid4()).replace('-', '')
-    postlists = []
-    for i in range(1,totalpage+1):
-        
-        postsurl = url+'page-'+str(i)
-        soup2 = BeautifulSoup(request.get(postsurl).content,'html.parser')
-        
-        if i == 1:#parse the title
-            topic = Topic(tid,soup2.find('h1',{'class':'ipsType_pagetitle'}).getText().strip(),url)
-        posteles = soup2.findAll('div',id=re.compile('^post_id_\d+'))
-        for postele in posteles:
-            postid = postele['id']
-            membername = postele.find('span',{'itemprop':'creator name'}).getText().strip()
-            posttime = postele.find('abbr',{'itemprop':'commentTime'})['title']
-            bodystr = None
-            bodies = postele.find('div',{'class':'post_body'}).find('div',{'itemprop':'commentText'}).findAll('p',recursive=False)
-            for body in bodies:
-                if bodystr == None:
-                    bodystr = body.getText().strip()
-                else:
-                    bodystr +='\n' + body.getText().strip()
-            post = Post(postid,tid,posttime,membername,bodystr)
-            postlists.append(post)
-    logging.info("Finished parse topic\t"+topic.name+'\t<=========>\t'+url+'\ttotal posts:\t'+str(len(postlists)))
-#     session.add(topic)
-#     session.bulk_save_objects(postlists)
+    
+    try:
+        postlists = []
+        for i in range(1,totalpage+1):
+            
+            postsurl = url+'page-'+str(i)
+            soup2 = BeautifulSoup(request.get(postsurl).content,'html.parser')
+            
+            if i == 1:#parse the title
+                topic = Topic(tid,soup2.find('h1',{'class':'ipsType_pagetitle'}).getText().strip(),url)
+            posteles = soup2.findAll('div',id=re.compile('^post_id_\d+'))
+            for postele in posteles:
+                postid = postele['id']
+                membername = postele.find('span',{'itemprop':'creator name'}).getText().strip()
+                posttime = postele.find('abbr',{'itemprop':'commentTime'})['title']
+                bodystr = None
+                bodies = postele.find('div',{'class':'post_body'}).find('div',{'itemprop':'commentText'}).findAll('p',recursive=False)
+                for body in bodies:
+                    if bodystr == None:
+                        bodystr = body.getText().strip()
+                    else:
+                        bodystr +='\n' + body.getText().strip()
+                post = Post(postid,tid,posttime,membername,bodystr)
+                postlists.append(post)
+        logging.info("Finished parse topic\t"+topic.name+'\t<=========>\t'+url+'\ttotal posts:\t'+str(len(postlists)))
+        Session = sessionmaker()
+        Session.configure(bind= engine)
+        session = Session()
+        if topic:
+            session.add(topic)
+        else:
+            print '++++++++++++++++++++++++++empty topic:\t',url
+        if postlists:
+            session.bulk_save_objects(postlists)
+        else:
+            print '++++++++++++++++++++++++++empty posts,url:\t',url
+        session.flush()
+        session.commit()
+        session.close()
+    except exc.InvalidRequestError:
+        print '*********************add failed,the url is:\t',url
+        print traceback.format_exc()
+    except requests.ConnectionError:
+        print '********************* connection failed,the url is:\t',url
   
 def dowork():
     while True:
         url = q.get()
         parse_topics(url)
         q.task_done()
-#         try:
-#             session.flush()
-#             session.commit()
-#         except exc.InvalidRequestError:
-#             print '*********************commit failed,the url is:\t',url
-#             session.rollback()
         time.sleep(2) 
 
 if __name__=="__main__":
