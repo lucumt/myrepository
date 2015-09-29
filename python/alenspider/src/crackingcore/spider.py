@@ -32,9 +32,6 @@ adapter = requests.adapters.HTTPAdapter(pool_connections=100, pool_maxsize=100)
 request.mount('http://', adapter)
   
 engine = create_engine('mysql://root:123456@127.0.0.1/alen?charset=utf8')  # 定义引擎 
-Session = sessionmaker()
-Session.configure(bind= engine)
-session = Session()
 
 def parse_totalpage(url):
     soup = BeautifulSoup(request.get(url).content,'html.parser')
