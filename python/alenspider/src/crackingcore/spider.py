@@ -129,12 +129,15 @@ def parse_posts(url):
                     addpost = False
                 
                 bodystr = None
-                bodies = postele.find('div',{'class':'post_body'}).find('div',{'itemprop':'commentText'}).findAll('p',recursive=False)
+                commenttext = postele.find('div',{'class':'post_body'}).find('div',{'itemprop':'commentText'})
+                bodies = commenttext.findAll('p',recursive=False)
                 for body in bodies:
                     if bodystr == None:
                         bodystr = body.getText().strip()
                     else:
                         bodystr +='\n' + body.getText().strip()
+                if not bodystr:
+                    bodystr = commenttext.getText().strip()
                 post = Post(postid,tid,posttime,membername,bodystr)
                 
                 if postnum == 0:

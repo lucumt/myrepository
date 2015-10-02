@@ -6,7 +6,7 @@ Created on 2015-9-26
 '''
 
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import  Column,String,DateTime
+from sqlalchemy import  Column,String,DateTime,Text
 
 Base = declarative_base()
 
@@ -32,7 +32,7 @@ class Post(Base):
     topicid = Column('topic_id',String(36))
     posttime = Column('post_time',DateTime)
     membername = Column('member_name',String(100))
-    body = Column('body',String(1000))
+    body = Column('body',Text())
     
     def __init__(self,postid,topicid,posttime,membername,body):
         self.postid = postid
