@@ -24,7 +24,24 @@ from models import Topic,Post
 concurrent=6
 q = Queue(concurrent*2)
 
-logging.basicConfig(level=logging.INFO,format='%(asctime)s %(message)s',datefmt='%Y-%m-%d %H:%M:%S')
+logging.getLogger("requests").setLevel(logging.INFO)
+logfilename = 'crackinglog_'+datetime.datetime.now().strftime("%Y-%m-%d")+'.log'
+# logging.basicConfig(name='crackinglog',level=logging.INFO,format='%(asctime)s %(message)s',datefmt='%Y-%m-%d %H:%M:%S',filename=logfilename)
+logger = logging.getLogger('crackinglog')  
+logger.setLevel(logging.DEBUG)  
+  
+fileloghandler = logging.FileHandler(logfilename)  
+fileloghandler.setLevel(logging.DEBUG)
+  
+consoleloghandler = logging.StreamHandler()  
+consoleloghandler.setLevel(logging.DEBUG)  
+  
+formatter = logging.Formatter(fmt='%(asctime)s - %(levelname)s - %(message)s',datefmt='%Y-%m-%d %H:%M:%S')  
+fileloghandler.setFormatter(formatter)  
+consoleloghandler.setFormatter(formatter)  
+  
+logger.addHandler(fileloghandler)  
+logger.addHandler(consoleloghandler)
 
 request = requests.Session()
 request.headers['User-Agent'] = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.131 Safari/537.36'
@@ -52,7 +69,8 @@ def parse_module():
     eles = soup.findAll('div', id=re.compile('^category_\d+'))
     for ele in eles:
         itemid = ele['id']
-        if itemid in['category_1','category_5','category_67','category_10','category_154','category_15']:
+#         if itemid in['category_1','category_5','category_67','category_10','category_154','category_15']:
+        if itemid in['category_1','category_5']:
             items = soup.find('div',id = itemid).findAll('h4',{'class':'forum_name'})
             for item in items:
                 url = item.strong.a['href']
@@ -74,7 +92,7 @@ def parse_subforum_topic(url):
     soup = BeautifulSoup(request.get(url).content,'html.parser')
     links = soup.findAll('div',{'class':'f_name'})
     if links:
-        logging.info("**************begin to parse submodule for*************")
+        logger.info("**************begin to parse submodule for*************")
         for link in links:
             url = link.find('a')['href'].strip()
             totalpage = parse_totalpage(url)
@@ -83,7 +101,7 @@ def parse_subforum_topic(url):
                 q.put(posturl)
 
 def parse_topics(url):
-    print '-------------------parsing page:\t',url
+    logger.info('-------------------parsing page:%s',url)
     soup2 = BeautifulSoup(request.get(url).content,'html.parser')
     topics = soup2.findAll('tr',{'itemtype':'http://schema.org/Article'})
     for topic in topics:
@@ -143,16 +161,16 @@ def parse_posts(url):
                 if postnum == 0:
                     postlists.append(post)
         if topic:
-            logging.info("Finished parse topic\t"+topic.name+'\t<=========>\t'+url+'\ttotal posts:\t'+str(len(postlists)))
+            logger.info("Finished parse topic:\t"+topic.name+'\t<=========>\t'+url+'\ttotal posts:\t'+str(len(postlists)))
             if addtopic:
                 session.add(topic)
         else:
-            print '++++++++++++++++++++++++++no add topic:\t',url
+            logger.info('++++++++++++++++++++++++++no add topic:\t%s',url)
         
         if postlists:
             session.bulk_save_objects(postlists)
         else:
-            print '++++++++++++++++++++++++++no add posts,url:\t',url
+            logger.info('++++++++++++++++++++++++++no add posts,url:\t%s',url)
         
         if addtopic or postlists:
             session.flush()
@@ -160,16 +178,16 @@ def parse_posts(url):
         session.close()
         
     except exc.InvalidRequestError:
-        print '*********************add failed,the url is:\t',url
-        print traceback.format_exc()
+        logger.info('*********************add failed,the url is:\t%s',url)
+        logger.info(traceback.format_exc())
     except requests.ConnectionError:
-        print '********************* connection failed,the url is:\t',url
+        logger.info('********************* connection failed,the url is:\t%s',url)
   
 def dowork():
     while True:
         url = q.get()
+        logger.info('++++++++++++++++++begin to processing url\t %s',url)
         parse_topics(url)
-        print url
         q.task_done()
         time.sleep(2) 
 
@@ -183,4 +201,3 @@ if __name__=="__main__":
     endtime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print '********start time:\t',starttime
     print '********end time:\t',endtime
-
