@@ -69,8 +69,7 @@ def parse_module():
     eles = soup.findAll('div', id=re.compile('^category_\d+'))
     for ele in eles:
         itemid = ele['id']
-#         if itemid in['category_1','category_5','category_67','category_10','category_154','category_15']:
-        if itemid in['category_1','category_5']:
+        if itemid in['category_1','category_5','category_67','category_10','category_154','category_15']:
             items = soup.find('div',id = itemid).findAll('h4',{'class':'forum_name'})
             for item in items:
                 url = item.strong.a['href']
