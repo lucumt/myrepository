@@ -14,7 +14,7 @@ import logging
 from bs4 import BeautifulSoup
 from threading import Thread
 from Queue import Queue
-from datetime import datetime
+from datetime import datetime,timedelta
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -117,11 +117,15 @@ def parse_topics(url):
                 lastposttime = datetime.strptime(lastposttimestr,'%a %b %d, %Y %I:%S %p')
                 logging.info('last post date:\t'+lastposttimestr)
                 logging.info('*********************************************************')
-            topicnum = session.query(Topic).filter(Topic.url==topicurl).count()
-            if topicurl not in urls and topicnum == 0:
-                topic = Topic(uuid=str(uuid.uuid4()),name=name,url=topicurl,third_party_id=thirdpartyid,forum_uuid='',created_at=lastposttime)
-                topics.append(topic)
-                urls.append(topicurl)
+            existsrecords = session.query(Topic).filter(Topic.url==topicurl).all()
+            if topicurl not in urls:
+                if not existsrecords:
+                    topic = Topic(uuid=str(uuid.uuid4()),name=name,url=topicurl,third_party_id=thirdpartyid,forum_uuid='',created_at=lastposttime)
+                    topics.append(topic)
+                    urls.append(topicurl)
+                    parse_post(topicurl, postpage)
+                elif existsrecords[0].created_at < datetime.now()-timedelta(days=1):
+                    parse_post(topicurl,postpage)
             
     session.bulk_save_objects(topics)
     session.flush()
