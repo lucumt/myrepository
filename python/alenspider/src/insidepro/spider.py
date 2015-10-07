@@ -4,16 +4,22 @@ Created on 2015-10-2
 
 @author: Administrator
 '''
-import datetime
 import re
 import requests
 import time
 import urlparse
+import uuid
 import logging
 
 from bs4 import BeautifulSoup
 from threading import Thread
 from Queue import Queue
+from datetime import datetime
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from models import Topic
 
 baseurl = 'http://forum.insidepro.com/'
 
@@ -26,6 +32,10 @@ adapter = requests.adapters.HTTPAdapter(pool_connections=100, pool_maxsize=1000)
 request.mount('http://', adapter)
 
 logging.basicConfig(name='crackinglog',level=logging.INFO,format='%(asctime)s %(message)s',datefmt='%Y-%m-%d %H:%M:%S')
+
+insidepostpattern = re.compile(ur'^Posted:(.*?)Post subject:')
+
+engine = create_engine('mysql://root:123456@127.0.0.1/insidepro?charset=utf8')
 
 def parse_forum():
     response = request.get(baseurl).content
@@ -71,23 +81,67 @@ def parse_topics(url):
     rows = table.findAll('tr')
     postpage = 1
     
+    Session = sessionmaker()
+    Session.configure(bind= engine)
+    session = Session()
+    
+    urls = []
+    topics = []
+    topic = None
+    
+    lastposttimestr = None
+    lastposttime = None
+    name = None
+    topicurl = None
+    thirdpartyid = None
+    
     for row in rows:
         td = row.find('td',{'class':'row1','width':'100%'})
         if td:
             topiclinks= td.find('span',{'class':'gensmall'}).findAll('a')
             topicele = td.find('span',{'class':'topictitle'})
-            topictitle = topicele.text.strip()
-            topiclink = urlparse.urljoin(baseurl,topicele.a['href'])
+            name = topicele.text.strip()
+            topicurl = urlparse.urljoin(baseurl,topicele.a['href'])
+            
+            parameters = urlparse.parse_qs(urlparse.urlparse(topicurl).query)
+            thirdpartyid = parameters['t'][0]
+            
             if topiclinks:
                 postpage = int(topiclinks[len(topiclinks)-1].text)
-                logging.info(topiclink+'\t------------------->\t'+topictitle+'\t<--------->\t'+str(postpage))
+                logging.info(topicurl+'\t------------------->\t'+thirdpartyid+'\t---->\t'+name+'\t<--------->\t'+str(postpage))
             else:
-                logging.info(topiclink+'\t------------------->\t'+topictitle)
-        datespan = row.find('td',{'class':'row3Right'})
-        if datespan:
-            posttime = time.strptime(datespan.span.contents[0], '%a %b %d, %Y %I:%M %p')
-            logging.info('----------last post date:\t'+time.strftime('%Y-%m-%d %H:%M:%S',posttime))
-            print '*********************************************************'
+                logging.info(topicurl+'\t------------------->\t'+parameters['t'][0]+'\t---->\t'+name)
+            datespan = row.find('td',{'class':'row3Right'})
+            if datespan:
+                lastposttimestr = datespan.span.contents[0]
+                lastposttime = datetime.strptime(lastposttimestr,'%a %b %d, %Y %I:%S %p')
+                logging.info('last post date:\t'+lastposttimestr)
+                logging.info('*********************************************************')
+            topicnum = session.query(Topic).filter(Topic.url==topicurl).count()
+            if topicurl not in urls and topicnum == 0:
+                topic = Topic(uuid=str(uuid.uuid4()),name=name,url=topicurl,third_party_id=thirdpartyid,forum_uuid='',created_at=lastposttime)
+                topics.append(topic)
+                urls.append(topicurl)
+            
+    session.bulk_save_objects(topics)
+    session.flush()
+    session.commit()
+
+def parse_post(url,totalpage):
+    
+    for i in range(totalpage):
+        posturl = url+'&postdays=0&postorder=desc&'+str(i*15)
+        response = request.get(posturl).content
+        soup = BeautifulSoup(response,'lxml')
+        spans = soup.findAll('span',{'class':'name'})
+        for span in spans:
+            dataele = span.parent.findNextSibling('td')
+            postinfo = dataele.find('span',{'class':'postdetails'}).text.strip()
+            body = dataele.find('span',{'class':'postbody'}).text.strip()
+            logging.info('member name:\t'+span.b.text.strip())
+            logging.info('post time:\t'+insidepostpattern.match(postinfo).group(1).strip())
+            logging.info(body)
+            logging.info('----------------------------------------')
             
 def dowork():
     while True:
@@ -98,12 +152,12 @@ def dowork():
         time.sleep(2) 
 
 if __name__ == '__main__':
-    starttime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    starttime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     for i in range(concurrent):
         t = Thread(target=dowork)
         t.daemon = True
         t.start()
     parse_forum()
-    endtime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    endtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print '********start time:\t',starttime
     print '********end time:\t',endtime
