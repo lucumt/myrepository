@@ -141,7 +141,7 @@ def parse_posts(url):
                 membername = postele.find('span',{'itemprop':'creator name'}).getText().strip()
                 posttime = postele.find('abbr',{'itemprop':'commentTime'})['title']
                 
-                postnum = session.query(Post).filter(Post.postid==postid).filter(Post.posttime==posttime).filter(Post.membername==membername).count()
+                postnum = session.query(Post).filter(Post.pid==postid).filter(Post.created_at==posttime).filter(Post.member_name==membername).count()
                 if postnum >0:
                     addpost = False
                 

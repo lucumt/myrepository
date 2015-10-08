@@ -86,7 +86,6 @@ def parse_topics(url):
     session = Session()
     
     urls = []
-    topics = []
     topic = None
     
     topicuuid = None
@@ -123,15 +122,15 @@ def parse_topics(url):
                 if not existsrecords:
                     topicuuid = str(uuid.uuid4()) 
                     topic = Topic(uuid = topicuuid,name = name,url = topicurl,third_party_id = thirdpartyid,forum_uuid = '',created_at = lastposttime)
-                    topics.append(topic)
+                    
                     urls.append(topicurl)
+                    session.add(topic)
+                    session.flush()
+                    session.commit()
+                    
                     parse_post(topicuuid,topicurl, postpage)
                 elif existsrecords[0].created_at < datetime.now()-timedelta(days=1):
                     parse_post(existsrecords[0].uuid,topicurl,postpage)
-            
-    session.bulk_save_objects(topics)
-    session.flush()
-    session.commit()
 
 def parse_post(threaduuid,url,totalpage):
     
@@ -159,7 +158,8 @@ def parse_post(threaduuid,url,totalpage):
         for span in spans:
             dataele = span.parent.findNextSibling('td')
             postinfo = dataele.find('span',{'class':'postdetails'}).text.strip()
-            body = dataele.find('span',{'class':'postbody'}).text.strip()
+#             body = dataele.find('span',{'class':'postbody'}).text.strip()
+            body = dataele.table.findAll('tr')[2].text.strip()
             membername = span.b.text.strip()
             thirdpartyid = span.a['name']
             posttimestr = insidepostpattern.match(postinfo).group(1).strip()
