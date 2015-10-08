@@ -19,7 +19,7 @@ from datetime import datetime,timedelta
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from models import Topic
+from models import Topic,Post
 
 baseurl = 'http://forum.insidepro.com/'
 
@@ -89,6 +89,7 @@ def parse_topics(url):
     topics = []
     topic = None
     
+    topicuuid = None
     lastposttimestr = None
     lastposttime = None
     name = None
@@ -120,20 +121,37 @@ def parse_topics(url):
             existsrecords = session.query(Topic).filter(Topic.url==topicurl).all()
             if topicurl not in urls:
                 if not existsrecords:
-                    topic = Topic(uuid=str(uuid.uuid4()),name=name,url=topicurl,third_party_id=thirdpartyid,forum_uuid='',created_at=lastposttime)
+                    topicuuid = str(uuid.uuid4()) 
+                    topic = Topic(uuid = topicuuid,name = name,url = topicurl,third_party_id = thirdpartyid,forum_uuid = '',created_at = lastposttime)
                     topics.append(topic)
                     urls.append(topicurl)
-                    parse_post(topicurl, postpage)
+                    parse_post(topicuuid,topicurl, postpage)
                 elif existsrecords[0].created_at < datetime.now()-timedelta(days=1):
-                    parse_post(topicurl,postpage)
+                    parse_post(existsrecords[0].uuid,topicurl,postpage)
             
     session.bulk_save_objects(topics)
     session.flush()
     session.commit()
 
-def parse_post(url,totalpage):
+def parse_post(threaduuid,url,totalpage):
+    
+    Session = sessionmaker()
+    Session.configure(bind= engine)
+    session = Session()
+    
+  
+    post = None
+    
+    thirdpartyid = None
+    membername = None
+    posttimestr = None
+    posttime = None
+    body = None
     
     for i in range(totalpage):
+        
+        posts = []
+        
         posturl = url+'&postdays=0&postorder=desc&'+str(i*15)
         response = request.get(posturl).content
         soup = BeautifulSoup(response,'lxml')
@@ -142,10 +160,23 @@ def parse_post(url,totalpage):
             dataele = span.parent.findNextSibling('td')
             postinfo = dataele.find('span',{'class':'postdetails'}).text.strip()
             body = dataele.find('span',{'class':'postbody'}).text.strip()
-            logging.info('member name:\t'+span.b.text.strip())
-            logging.info('post time:\t'+insidepostpattern.match(postinfo).group(1).strip())
+            membername = span.b.text.strip()
+            thirdpartyid = span.a['name']
+            posttimestr = insidepostpattern.match(postinfo).group(1).strip()
+            posttime = datetime.strptime(posttimestr,'%a %b %d, %Y %I:%S %p')
+            
+            logging.info('member name:\t'+membername)
+            logging.info('third part id:\t'+thirdpartyid)
+            logging.info('post time:\t'+posttimestr)
             logging.info(body)
             logging.info('----------------------------------------')
+            post = Post(uuid = str(uuid.uuid4()),thread_uuid = threaduuid,third_party_id=thirdpartyid,member_name=membername,body=body,created_at=posttime)
+            posts.append(post)
+        session.bulk_save_objects(posts)
+        session.flush()
+        session.commit()
+        
+
             
 def dowork():
     while True:
