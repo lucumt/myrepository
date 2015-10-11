@@ -147,7 +147,12 @@ def parse_post(threaduuid,url,totalpage):
     posttime = None
     body = None
     
+    stopiter = False
+    
     for i in range(totalpage):
+        
+        if stopiter:
+            break
         
         posts = []
         
@@ -158,12 +163,16 @@ def parse_post(threaduuid,url,totalpage):
         for span in spans:
             dataele = span.parent.findNextSibling('td')
             postinfo = dataele.find('span',{'class':'postdetails'}).text.strip()
-#             body = dataele.find('span',{'class':'postbody'}).text.strip()
             body = dataele.table.findAll('tr')[2].text.strip()
             membername = span.b.text.strip()
             thirdpartyid = span.a['name']
             posttimestr = insidepostpattern.match(postinfo).group(1).strip()
             posttime = datetime.strptime(posttimestr,'%a %b %d, %Y %I:%S %p')
+            
+            postnum = session.query(Post).filter(Post.third_party_id==thirdpartyid).filter(Post.created_at==posttime).filter(Post.member_name==membername).count()
+            if postnum >0:
+                stopiter = True
+                break
             
             logging.info('member name:\t'+membername)
             logging.info('third part id:\t'+thirdpartyid)
