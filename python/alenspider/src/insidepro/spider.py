@@ -23,7 +23,7 @@ from models import Topic,Post
 
 baseurl = 'http://forum.insidepro.com/'
 
-concurrent=6
+concurrent=10
 q = Queue(concurrent*2)
 
 request = requests.Session()
@@ -114,14 +114,14 @@ def parse_topics(url):
             datespan = row.find('td',{'class':'row3Right'})
             if datespan:
                 lastposttimestr = datespan.span.contents[0]
-                lastposttime = datetime.strptime(lastposttimestr,'%a %b %d, %Y %I:%S %p')
+                lastposttime = datetime.strptime(lastposttimestr,'%a %b %d, %Y %I:%M %p')
                 logging.info('last post date:\t'+lastposttimestr)
                 logging.info('*********************************************************')
             existsrecords = session.query(Topic).filter(Topic.url==topicurl).all()
             if topicurl not in urls:
                 if not existsrecords:
                     topicuuid = str(uuid.uuid4()) 
-                    topic = Topic(uuid = topicuuid,name = name,url = topicurl,third_party_id = thirdpartyid,forum_uuid = '',created_at = lastposttime)
+                    topic = Topic(uuid = topicuuid,name = name,url = topicurl,third_party_id = thirdpartyid,forum_uuid = 'ba4e2336-6b90-11e5-9db3-0cc47a34a45a',created_at = lastposttime)
                     
                     urls.append(topicurl)
                     session.add(topic)
