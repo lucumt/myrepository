@@ -146,7 +146,7 @@ def parse_posts(url):
                     session.commit()
             posteles = soup2.findAll('div',id=re.compile('^post_id_\d+'))
             for postele in posteles:
-                postid = postele['id']
+                postid = postele['id'][8:]
                 membername = postele.find('span',{'itemprop':'creator name'}).getText().strip()
                 posttime = datetime.strptime(postele.find('abbr',{'itemprop':'commentTime'})['title'], "%Y-%m-%dT%H:%M:%S+00:00")
                  
@@ -164,7 +164,7 @@ def parse_posts(url):
                             bodystr +='\n' + body.getText().strip()
                     if not bodystr:
                         bodystr = commenttext.getText().strip()
-                    logging.info("------------------create topic -------------------"+postid)
+                    logging.info("------------------create post ----------\t"+postid)
                     logging.info("post third party id:\t"+postid)
                     logging.info("post member name:\t"+membername)
                     logging.info("post body length:\t"+str(len(bodystr)))
