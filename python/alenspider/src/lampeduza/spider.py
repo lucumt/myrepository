@@ -7,10 +7,20 @@ Created on 2015-10-25
 import logging
 import requests
 import re
-
+import time
+import uuid
 
 from bs4 import BeautifulSoup
 from datetime import datetime
+from threading import Thread
+from Queue import Queue
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from models import Topic,Post
+
+concurrent=10
+q = Queue(concurrent*2)
 
 request = requests.Session()
 request.headers['User-Agent'] = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.131 Safari/537.36'
@@ -19,6 +29,8 @@ request.mount('http://', adapter)
 
 logfilename = 'lampeduza_'+datetime.now().strftime("%Y_%m_%d")+'.log'
 logging.basicConfig(name='inlampeduza',level=logging.INFO,format='%(asctime)s %(message)s',datefmt='%Y-%m-%d %H:%M:%S')
+
+engine = create_engine('mysql://root:123456@127.0.0.1/lampeduza?charset=utf8')
 
 def parse_lampeduza():
     url = 'https://lampeduza.so/'
@@ -48,8 +60,6 @@ def parse_total_page(soup):
     return totalpage    
 
 def parse_item(url):
-#     if url != 'https://lampeduza.so/forum/14-иски-суд-список-брутов/':
-#         return
     response = request.get(url).content
     soup = BeautifulSoup(response,'lxml')
     totalpage = parse_total_page(soup)
@@ -59,24 +69,44 @@ def parse_item(url):
         if i>0:
             response = request.get(topicurl).content
             soup=BeautifulSoup(response,'lxml')
-        parse_topic(soup)
+        q.put(soup)
+    q.join()
 
-def parse_topic(soup):
+def parse_topics(soup):
     tds = soup.findAll('td',{'class':'col_f_content'})
     for td in tds:
-        logging.info('---------------------------------------')
         link = td.h4.a
         linkinfos=link['title'].split('- started')
         
-        url = link['href']
-        logging.info('third party id:\t'+link['id'].strip()[9:])
-        logging.info('name:\t'+linkinfos[0].strip())
-        logging.info('url:\t'+url)
+        topicurl = link['href']
+        name=linkinfos[0].strip()
+        thirdpartyid=link['id'].strip()[9:]
+        
+        
+        logging.info('-------------------create thread----------------:\t'+thirdpartyid)
+        logging.info('third party id:\t'+thirdpartyid)
+        logging.info('name:\t'+name)
+        logging.info('url:\t'+topicurl)
         if linkinfos[1].strip() !='--':
-            logging.info('created_at:\t'+str(datetime.strptime(linkinfos[1].strip(),'%d %B %Y - %I:%M %p')))
-        parse_posts(url)
+            createdat=datetime.strptime(linkinfos[1].strip(),'%d %B %Y - %I:%M %p')
+            logging.info('created_at:\t'+str(createdat))
+        else:
+            createdat=None
+        createdat=datetime.fromtimestamp(0)
+        #createdat=None
+        Session = sessionmaker()
+        Session.configure(bind= engine)
+        session = Session()
+        topicuuid = str(uuid.uuid4()) 
+        topic = Topic(uuid = topicuuid,name = name,url = topicurl,third_party_id = thirdpartyid,forum_uuid = 'ba4e11e1-6b90-11e5-9db3-0cc47a34a45a',created_at = createdat)
+        session.add(topic)
+        session.flush()
+        session.commit()
+        session.close()
+        parse_posts(topicurl,topicuuid)
             
-def parse_posts(url):
+def parse_posts(url,topicuuid):
+    time.sleep(5)
     response=requests.get(url).content
     soup = BeautifulSoup(response)
     totalpage=parse_total_page(soup)
@@ -86,19 +116,48 @@ def parse_posts(url):
             response=requests.get(posturl).content
             soup = BeautifulSoup(response)
         posts=soup.findAll('div',{'class':'post_block'})
+        
+        postlist = []
+        Session = sessionmaker()
+        Session.configure(bind= engine)
+        session = Session()
+        
         for post in posts:
             pname = post.find('div',{'class':'post_username'}).getText().strip()
             pdate = post.find('div',{'class':'post_date'}).abbr['title']
             pdate = datetime.strptime(pdate,'%Y-%m-%dT%H:%M:%S+00:00')
-            logging.info('---------------------------------------')
-            logging.info('Third party id:\t'+post['id'][8:])
+            body = post.find('div',{'class':'post_body'}).div.getText().strip()
+            thirdpartyid=post['id'][8:]
+            
+            logging.info('------------create posts-------------:\t'+thirdpartyid)
+            logging.info('Third party id:\t'+thirdpartyid)
             logging.info('Member name:\t'+pname)
             logging.info('Created date:\t'+str(pdate))
-            logging.info('Post body length:\t'+str(len(post.find('div',{'class':'post_body'}).div.getText().strip())))
+            logging.info('Post body length:\t'+str(len(body)))
+            
+            post = Post(uuid = str(uuid.uuid4()),thread_uuid = topicuuid,third_party_id=thirdpartyid,member_name=pname,body=body,created_at=pdate)
+            postlist.append(post)
+        
+        session.bulk_save_objects(postlist)
+        session.flush()
+        session.commit()
+        session.close()
+        
+def dowork():
+    while True:
+        url = q.get()
+#         logging.info('+++++++++++++++++++++++++++current url:\t'+url)
+        parse_topics(url)
+        q.task_done()
+        time.sleep(2) 
 
 if __name__ == '__main__':
     starttime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    for i in range(concurrent):
+        t = Thread(target=dowork)
+        t.daemon = True
+        t.start()
     parse_lampeduza()
     endtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print 'start time',starttime
-    print 'end time',endtime
+    logging.info('start time:\t'+starttime)
+    logging.info('end time:\t'+endtime)
