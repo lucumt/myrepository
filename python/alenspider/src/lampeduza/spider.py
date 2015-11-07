@@ -81,27 +81,31 @@ def parse_topics(soup):
         topicurl = link['href']
         name=linkinfos[0].strip()
         thirdpartyid=link['id'].strip()[9:]
+        topicuuid=None
         
-        
-        logging.info('-------------------create thread----------------:\t'+thirdpartyid)
-        logging.info('third party id:\t'+thirdpartyid)
-        logging.info('name:\t'+name)
-        logging.info('url:\t'+topicurl)
-        if linkinfos[1].strip() !='--':
-            createdat=datetime.strptime(linkinfos[1].strip(),'%d %B %Y - %I:%M %p')
-            logging.info('created_at:\t'+str(createdat))
-        else:
-            createdat=None
-        createdat=datetime.fromtimestamp(0)
-        #createdat=None
         Session = sessionmaker()
         Session.configure(bind= engine)
         session = Session()
-        topicuuid = str(uuid.uuid4()) 
-        topic = Topic(uuid = topicuuid,name = name,url = topicurl,third_party_id = thirdpartyid,forum_uuid = 'ba4e11e1-6b90-11e5-9db3-0cc47a34a45a',created_at = createdat)
-        session.add(topic)
-        session.flush()
-        session.commit()
+        
+        existsrecords = session.query(Topic).filter(Topic.url==topicurl).filter(Topic.third_party_id==thirdpartyid).all()
+        if existsrecords:
+            topicuuid= existsrecords[0].uuid
+            logging.info('-------------------exists thread----------------:\t'+existsrecords[0].third_party_id)
+        else:
+            logging.info('-------------------create thread----------------:\t'+thirdpartyid)
+            logging.info('third party id:\t'+thirdpartyid)
+            logging.info('name:\t'+name)
+            logging.info('url:\t'+topicurl)
+            if linkinfos[1].strip() !='--':
+                createdat=datetime.strptime(linkinfos[1].strip(),'%d %B %Y - %I:%M %p')
+                logging.info('created_at:\t'+str(createdat))
+            else:
+                createdat=datetime.fromtimestamp(0)
+            topicuuid = str(uuid.uuid4()) 
+            topic = Topic(uuid = topicuuid,name = name,url = topicurl,third_party_id = thirdpartyid,forum_uuid = 'ba4e11e1-6b90-11e5-9db3-0cc47a34a45a',created_at = createdat)
+            session.add(topic)
+            session.flush()
+            session.commit()
         session.close()
         parse_posts(topicurl,topicuuid)
             
@@ -124,30 +128,35 @@ def parse_posts(url,topicuuid):
         
         for post in posts:
             pname = post.find('div',{'class':'post_username'}).getText().strip()
-            pdate = post.find('div',{'class':'post_date'}).abbr['title']
-            pdate = datetime.strptime(pdate,'%Y-%m-%dT%H:%M:%S+00:00')
-            body = post.find('div',{'class':'post_body'}).div.getText().strip()
             thirdpartyid=post['id'][8:]
             
-            logging.info('------------create posts-------------:\t'+thirdpartyid)
-            logging.info('Third party id:\t'+thirdpartyid)
-            logging.info('Member name:\t'+pname)
-            logging.info('Created date:\t'+str(pdate))
-            logging.info('Post body length:\t'+str(len(body)))
+            postnum = session.query(Post).filter(Post.third_party_id==thirdpartyid).filter(Post.member_name==pname).count()
             
-            post = Post(uuid = str(uuid.uuid4()),thread_uuid = topicuuid,third_party_id=thirdpartyid,member_name=pname,body=body,created_at=pdate)
-            postlist.append(post)
-        
-        session.bulk_save_objects(postlist)
-        session.flush()
-        session.commit()
+            if postnum>0:
+                logging.info('------------------------exists post--------------:\t'+thirdpartyid)
+            else:
+                pdate = post.find('div',{'class':'post_date'}).abbr['title']
+                pdate = datetime.strptime(pdate,'%Y-%m-%dT%H:%M:%S+00:00')
+                body = post.find('div',{'class':'post_body'}).div.getText().strip()
+            
+                logging.info('------------create posts-------------:\t'+thirdpartyid)
+                logging.info('Third party id:\t'+thirdpartyid)
+                logging.info('Member name:\t'+pname)
+                logging.info('Created date:\t'+str(pdate))
+                logging.info('Post body length:\t'+str(len(body)))
+                
+                post = Post(uuid = str(uuid.uuid4()),thread_uuid = topicuuid,third_party_id=thirdpartyid,member_name=pname,body=body,created_at=pdate)
+                postlist.append(post)
+        if postlist:
+            session.bulk_save_objects(postlist)
+            session.flush()
+            session.commit()
         session.close()
         
 def dowork():
     while True:
-        url = q.get()
-#         logging.info('+++++++++++++++++++++++++++current url:\t'+url)
-        parse_topics(url)
+        soup = q.get()
+        parse_topics(soup)
         q.task_done()
         time.sleep(2) 
 
