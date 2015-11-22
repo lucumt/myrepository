@@ -11,59 +11,21 @@ import time
 import uuid
 
 from bs4 import BeautifulSoup
-from datetime import datetime
+from datetime import datetime,timedelta
+from threading import Thread
+from Queue import Queue
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import  Column,DateTime,Text,Integer,CHAR,VARCHAR
+
+from models import Topic,Post
+
+currentday = datetime.now().strftime("%d-%m-%Y")
+yesterday=(datetime.now()-timedelta(days=1)).strftime("%d-%m-%Y")
 
 
-Base = declarative_base()
-
-class Topic(Base):
-    __tablename__ = 'threads'
-
-    tid = Column('id',Integer,primary_key = True)
-    uuid = Column('uuid',CHAR(36),unique = True,nullable = False)
-    forum_uuid = Column('forum_uuid',CHAR(36),nullable=False,default = '')
-    third_party_id = Column('third_party_id',VARCHAR(64),nullable = False,default= '')
-    name = Column('name',VARCHAR(255),nullable = False,default = '')
-    created_at = Column('created_at',DateTime ,nullable = False)
-    url = Column('url',VARCHAR(255),nullable = False,default = '')
-
-    def __init__(self,uuid,forum_uuid,third_party_id,name,created_at,url):
-        self.uuid = uuid
-        self.forum_uuid = forum_uuid
-        self.third_party_id = third_party_id
-        self.name = name
-        self.created_at = created_at
-        self.url = url
-
-    def __repr__(self):
-        return "<Metadata('%s','%s','%s','%s','%s','%s','%s')>" % (self.tid,self.uuid,self.forum_uuid,self.third_party_id,self.name,self.created_at,self.url)
-    
-class Post(Base):
-    __tablename__='posts'
-    
-    pid = Column('id',CHAR(36),primary_key = True)
-    uuid = Column('uuid',CHAR(36),unique = True,nullable = False)
-    thread_uuid = Column('thread_uuid',CHAR(36), nullable = False)
-    third_party_id = Column('third_party_id',VARCHAR(64))
-    member_name = Column('member_name',VARCHAR(64),nullable = False,default = '')
-    body = Column('body',Text(),nullable = False)
-    created_at = Column('created_at',DateTime,nullable = False)
-    
-    def __init__(self,uuid,thread_uuid,third_party_id,member_name,body,created_at):
-        self.uuid = uuid
-        self.thread_uuid = thread_uuid
-        self.third_party_id = third_party_id
-        self.member_name = member_name
-        self.body = body
-        self.created_at = created_at
-        
-    def __repr__(self):
-        return "<Metadata('%s','%s','%s','%s','%s','%s','%s')>" % (self.pid,self.uuid,self.thread_uuid,self.third_party_id,self.member_name,self.body,self.created_at)
-
+concurrent=10
+q = Queue(concurrent*2)
 
 request = requests.Session()
 request.headers['User-Agent'] = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/34.0.1847.131 Safari/537.36'
@@ -88,8 +50,9 @@ def parse_forum():
         match = re.search(fpattern,link)
         if match:
             link='http://verified.bz/forumdisplay.php?'+match.group(1)
-            parse_topic(link)
             logging.info('------------------------------------------------')
+            q.put(link)
+    q.join()
 
 def check_authority(content):
     if 'Your administrator has required a password to access this forum. Please enter this password now.' in content:
@@ -152,9 +115,19 @@ def parse_topic(url):
                         logging.info('-----------------exist thread-----------------:\t'+existsrecords[0].third_party_id)
                     else:
                         topicuuid=str(uuid.uuid4())
-                        date = tr.findAll('td')[3]
-                        lastpostdate=date.getText().strip()[:19]
-                        lastpostdate=datetime.strptime(lastpostdate,'%d-%m-%Y %I:%M %p')
+                        date = tr.findAll('td')[3].getText().strip()
+                        if date == '-':
+                            lastpostdate=datetime.fromtimestamp(0)
+                        else:
+                            lastpostdate=date[:19]
+                            if 'Today' in lastpostdate:
+                                lastpostdate=lastpostdate[:14].strip()
+                                lastpostdate=lastpostdate.replace('Today',currentday)
+                            elif 'Yesterday' in lastpostdate :
+                                lastpostdate=lastpostdate[:18].strip()
+                                lastpostdate=lastpostdate.replace('Yesterday',yesterday)
+                            lastpostdate=lastpostdate.replace('\n','')
+                            lastpostdate=datetime.strptime(lastpostdate,'%d-%m-%Y %I:%M %p')
                         name=link.getText().strip()
                         
                         logging.info('name:\t'+name)
@@ -202,6 +175,10 @@ def parse_post(url,topicuuid):
                 membername=table.find('div',id='postmenu_'+thirdpartyid)
             membername=membername.getText().strip()
             postdate=table.find('a',{'name':'post'+thirdpartyid}).parent.getText().strip()
+            if 'Today' in postdate:
+                postdate=postdate.replace('Today',currentday)
+            elif 'Yesterday' in postdate :
+                postdate=postdate.replace('Yesterday',yesterday)
             postdate=datetime.strptime(postdate,'%d-%m-%Y, %I:%M %p')
             body=table.find('td',id='td_post_'+thirdpartyid).getText().strip()
             logging.info('member name:\t'+membername)
@@ -217,13 +194,21 @@ def parse_post(url,topicuuid):
             session.commit()
         session.close()
 
+def dowork():
+    while True:
+        url = q.get()
+        parse_topic(url)
+        q.task_done()
+        time.sleep(2) 
+
 if __name__ == '__main__':
     starttime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    for i in range(concurrent):
+        t = Thread(target=dowork)
+        t.daemon = True
+        t.start()
     parse_forum()
-#     url='http://verified.bz/forumdisplay.php?f=201'
-#     parse_topic(url)
-#     parse_post('http://verified.bz/showthread.php?t=42077',str(uuid.uuid4()))
-#     parse_post('http://verified.bz/showthread.php?t=8635')
+    #parse_topic('http://verified.bz/forumdisplay.php?f=162')
     endtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     logging.info('start time:\t'+starttime)
     logging.info('end time:\t'+endtime)
