@@ -33,7 +33,7 @@ adapter = requests.adapters.HTTPAdapter(pool_connections=100, pool_maxsize=1000)
 request.mount('http://', adapter)
 
 logfilename = 'carderpro_'+datetime.now().strftime("%Y_%m_%d")+'.log'
-logging.basicConfig(name='carderpro',level=logging.INFO,format='%(asctime)s %(message)s',datefmt='%Y-%m-%d %H:%M:%S',filename=logfilename)
+logging.basicConfig(name='carderpro',level=logging.INFO,format='%(asctime)s %(message)s',datefmt='%Y-%m-%d %H:%M:%S')
 
 engine = create_engine('mysql://root:123456@127.0.0.1/carderpro?charset=utf8')
 
@@ -45,14 +45,29 @@ def parse_forum():
     response = request.get(url)
     soup = BeautifulSoup(response.content,'lxml')
     tds = soup.findAll('td',{'class':'alt1Active'})
+    index = 0
     for td in tds:
         link = td.findAll('a')[0]['href']
         match = re.search(fpattern,link)
         if match:
             link='http://verified.bz/forumdisplay.php?'+match.group(1)
-            logging.info('------------------------------------------------')
-            q.put(link)
+            index = index+1
+            parse_item(link)
+
+def parse_item(url):
+    content = request.get(url+'&order=desc&page=1').content
+    if not check_authority(content):
+        return
+    soup = BeautifulSoup(content,'lxml')
+    totalpage = parse_total_page(soup)
+    for i in range(totalpage):
+        itemurl = url+'&order=desc&page='+str(i+1)
+        if i>0:
+            response = request.get(itemurl).content
+            soup=BeautifulSoup(response,'lxml')
+        q.put(soup)
     q.join()
+    
 
 def check_authority(content):
     if 'Your administrator has required a password to access this forum. Please enter this password now.' in content:
@@ -68,80 +83,61 @@ def parse_total_page(pagediv):
     return totalpage
     
     
-def parse_topic(url):
-    content = request.get(url+'&order=desc&page=1').content
-    if not check_authority(content):
-        return
-    soup = BeautifulSoup(content,'lxml')
-    
-    totalpage = 1
-    pagediv = soup.find('div',{'class':'pagenav'})
-    if pagediv:
-        totalpage = parse_total_page(pagediv)
-    for i in range(totalpage):
-        time.sleep(3)
-        if i>0:
-            itemurl = url+'&order=desc&page='+str(i+1)
-            purl=itemurl
-            content = request.get(itemurl).content
-            soup = BeautifulSoup(content,'lxml')
-        else:
-            purl=url
-        tbody = soup.find('tbody',id=re.compile('^threadbits_forum_\d+'))
-        if tbody:
-            trs = tbody.findAll('tr')
-            for tr in trs:
+def parse_topic(soup):
+    tbody = soup.find('tbody',id=re.compile('^threadbits_forum_\d+'))
+    if tbody:
+        trs = tbody.findAll('tr')
+        for tr in trs:
+            
+            topicuuid=None
+            
+            link = tr.find('a',id=re.compile('^thread_title_\d+'))
+            if link:
                 
-                topicuuid=None
+                Session = sessionmaker()
+                Session.configure(bind= engine)
+                session = Session()
                 
-                link = tr.find('a',id=re.compile('^thread_title_\d+'))
-                if link:
-                    
-                    Session = sessionmaker()
-                    Session.configure(bind= engine)
-                    session = Session()
-                    
-                    thirdpartyid=link['id'][13:]
-                    turl =link['href']
-                    tmatch = re.search('showthread.php\?s=\w+&(t=\d+)',turl)
-                    if tmatch:
-                        turl = 'http://verified.bz/showthread.php?'+tmatch.group(1)
+                thirdpartyid=link['id'][13:]
+                turl =link['href']
+                tmatch = re.search('showthread.php\?s=\w+&(t=\d+)',turl)
+                if tmatch:
+                    turl = 'http://verified.bz/showthread.php?'+tmatch.group(1)
+                else:
+                    turl = 'http://verified.bz/'+turl
+                 
+                existsrecords = session.query(Topic).filter(Topic.url==turl).filter(Topic.third_party_id==thirdpartyid).all()
+                if existsrecords:
+                    topicuuid=existsrecords[0].uuid
+                    logging.info('-----------------exist thread-----------------:\t'+existsrecords[0].third_party_id)
+                else:
+                    topicuuid=str(uuid.uuid4())
+                    date = tr.findAll('td')[3].getText().strip()
+                    if date == '-':
+                        lastpostdate=datetime.fromtimestamp(0)
                     else:
-                        turl = 'http://verified.bz/'+turl
-                     
-                    existsrecords = session.query(Topic).filter(Topic.url==turl).filter(Topic.third_party_id==thirdpartyid).all()
-                    if existsrecords:
-                        topicuuid=existsrecords[0].uuid
-                        logging.info('-----------------exist thread-----------------:\t'+existsrecords[0].third_party_id)
-                    else:
-                        topicuuid=str(uuid.uuid4())
-                        date = tr.findAll('td')[3].getText().strip()
-                        if date == '-':
-                            lastpostdate=datetime.fromtimestamp(0)
-                        else:
-                            lastpostdate=date[:19]
-                            if 'Today' in lastpostdate:
-                                lastpostdate=lastpostdate[:14].strip()
-                                lastpostdate=lastpostdate.replace('Today',currentday)
-                            elif 'Yesterday' in lastpostdate :
-                                lastpostdate=lastpostdate[:18].strip()
-                                lastpostdate=lastpostdate.replace('Yesterday',yesterday)
-                            lastpostdate=lastpostdate.replace('\n','')
-                            lastpostdate=datetime.strptime(lastpostdate,'%d-%m-%Y %I:%M %p')
-                        name=link.getText().strip()
-                        
-                        logging.info('name:\t'+name)
-                        logging.info('url:\t'+turl)
-                        logging.info('third party id:\t'+thirdpartyid)
-                        logging.info('date:\t'+str(lastpostdate))
-                        topic = Topic(uuid = topicuuid,name = name,url = turl,third_party_id = thirdpartyid,forum_uuid = '3861fa39-83d1-11e5-9db3-0cc47a34a45a',created_at = lastpostdate)
-                        session.add(topic)
-                        session.flush()
-                        session.commit()
-                        logging.info('----------------------add thread----------------:\t'+thirdpartyid)
-                    session.close()
-                    parse_post(turl,topicuuid)
-        logging.info('***************************finished parsing topic*********************:\t'+purl)
+                        lastpostdate=date[:19]
+                        if 'Today' in lastpostdate:
+                            lastpostdate=lastpostdate[:14].strip()
+                            lastpostdate=lastpostdate.replace('Today',currentday)
+                        elif 'Yesterday' in lastpostdate :
+                            lastpostdate=lastpostdate[:18].strip()
+                            lastpostdate=lastpostdate.replace('Yesterday',yesterday)
+                        lastpostdate=lastpostdate.replace('\n','')
+                        lastpostdate=datetime.strptime(lastpostdate,'%d-%m-%Y %I:%M %p')
+                    name=link.getText().strip()
+                    
+                    logging.info('name:\t'+name)
+                    logging.info('url:\t'+turl)
+                    logging.info('third party id:\t'+thirdpartyid)
+                    logging.info('date:\t'+str(lastpostdate))
+                    topic = Topic(uuid = topicuuid,name = name,url = turl,third_party_id = thirdpartyid,forum_uuid = '3861fa39-83d1-11e5-9db3-0cc47a34a45a',created_at = lastpostdate)
+                    session.add(topic)
+                    session.flush()
+                    session.commit()
+                    logging.info('----------------------add thread----------------:\t'+thirdpartyid)
+                session.close()
+                parse_post(turl,topicuuid)
 
 def parse_post(url,topicuuid):
     
@@ -196,8 +192,8 @@ def parse_post(url,topicuuid):
 
 def dowork():
     while True:
-        url = q.get()
-        parse_topic(url)
+        soup = q.get()
+        parse_topic(soup)
         q.task_done()
         time.sleep(2) 
 
