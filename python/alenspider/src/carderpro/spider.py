@@ -35,7 +35,7 @@ request.mount('http://', adapter)
 logfilename = 'carderpro_'+datetime.now().strftime("%Y_%m_%d")+'.log'
 logging.basicConfig(name='carderpro',level=logging.INFO,format='%(asctime)s %(message)s',datefmt='%Y-%m-%d %H:%M:%S')
 
-engine = create_engine('mysql://root:123456@127.0.0.1/carderpro?charset=utf8')
+engine = create_engine('mysql://root:123456@127.0.0.1/carderpro?use_unicode=0&charset=utf8')
 
 def parse_forum():
     url = 'http://verified.bz/'
@@ -56,8 +56,6 @@ def parse_forum():
 
 def parse_item(url):
     content = request.get(url+'&order=desc&page=1').content
-    if not check_authority(content):
-        return
     soup = BeautifulSoup(content,'lxml')
     totalpage = parse_total_page(soup)
     for i in range(totalpage):
@@ -67,13 +65,6 @@ def parse_item(url):
             soup=BeautifulSoup(response,'lxml')
         q.put(soup)
     q.join()
-    
-
-def check_authority(content):
-    if 'Your administrator has required a password to access this forum. Please enter this password now.' in content:
-        return False
-    else:
-        return True
 
 def parse_total_page(pagediv):
     totalpage = 1
@@ -149,7 +140,7 @@ def parse_post(url,topicuuid):
     if pdiv:
         totalpage = parse_total_page(pdiv)
     for i in range(totalpage,0,-1):
-        time.sleep(3)
+#         time.sleep(3)
         posturl=url+'&page='+str(i)
         if i==1:
             psoup=soup
@@ -166,24 +157,28 @@ def parse_post(url,topicuuid):
          
         for table in tables:
             thirdpartyid=table['id'][4:]
-            membername = table.find('a',{'class':'bigusername'})
-            if not membername:
-                membername=table.find('div',id='postmenu_'+thirdpartyid)
-            membername=membername.getText().strip()
-            postdate=table.find('a',{'name':'post'+thirdpartyid}).parent.getText().strip()
-            if 'Today' in postdate:
-                postdate=postdate.replace('Today',currentday)
-            elif 'Yesterday' in postdate :
-                postdate=postdate.replace('Yesterday',yesterday)
-            postdate=datetime.strptime(postdate,'%d-%m-%Y, %I:%M %p')
-            body=table.find('td',id='td_post_'+thirdpartyid).getText().strip()
-            logging.info('member name:\t'+membername)
-            logging.info('third party id:\t'+thirdpartyid)
-            logging.info('post date:\t'+str(postdate))
-            logging.info('post body length:\t'+str(len(body)))
-            logging.info('--------------add post-------------:\t'+thirdpartyid)
-            post = Post(uuid = str(uuid.uuid4()),thread_uuid = topicuuid,third_party_id=thirdpartyid,member_name=membername,body=body,created_at=postdate)
-            posts.append(post)
+            postnum = session.query(Post).filter(Post.third_party_id==thirdpartyid).count()
+            if postnum >0:
+                logging.info('------------------------exists post--------------:\t'+thirdpartyid)
+            else:
+                membername = table.find('a',{'class':'bigusername'})
+                if not membername:
+                    membername=table.find('div',id='postmenu_'+thirdpartyid)
+                membername=membername.getText().strip()
+                postdate=table.find('a',{'name':'post'+thirdpartyid}).parent.getText().strip()
+                if 'Today' in postdate:
+                    postdate=postdate.replace('Today',currentday)
+                elif 'Yesterday' in postdate :
+                    postdate=postdate.replace('Yesterday',yesterday)
+                postdate=datetime.strptime(postdate,'%d-%m-%Y, %I:%M %p')
+                body=table.find('td',id='td_post_'+thirdpartyid).getText().strip()
+                logging.info('member name:\t'+membername)
+                logging.info('third party id:\t'+thirdpartyid)
+                logging.info('post date:\t'+str(postdate))
+                logging.info('post body length:\t'+str(len(body)))
+                logging.info('--------------add post-------------:\t'+thirdpartyid)
+                post = Post(uuid = str(uuid.uuid4()),thread_uuid = topicuuid,third_party_id=thirdpartyid,member_name=membername,body=body,created_at=postdate)
+                posts.append(post)
         if posts:
             session.bulk_save_objects(posts)
             session.flush()
