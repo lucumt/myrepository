@@ -130,26 +130,32 @@ def parse_topic(url):
             Session = sessionmaker()
             Session.configure(bind= engine)
             session = Session()
-            topicuuid = str(uuid.uuid4())
             
             tname = link.getText().strip()
             turl = 'http://bbs.2cto.com/'+link['href']
             t_party_id = link['id'][7:]
-            created_td = td.parent.find('td',{'class':'author'})
-            t_created_at = created_td.p.getText().strip()
-            t_last_update = created_td.find_next_sibling('td',{'class':'author'}).p.a['title']
-            t_created_at= datetime.strptime(t_created_at,'%Y-%m-%d')
-            t_last_update= datetime.strptime(t_last_update,'%Y-%m-%d %H:%M')
-            logging.info('------------------------------------------')
-            logging.info('name:\t'+tname)
-            logging.info('third party id:\t'+t_party_id)
-            logging.info('url:\t'+turl)
-            logging.info('created at:\t'+str(t_created_at))
-            logging.info('last update:\t'+str(t_last_update))
-            topic = Topic(uuid = topicuuid,name = tname,url = turl,third_party_id = t_party_id,forum_uuid = '9f6c5c53-e995-1033-a072-e7fc3b303faa',created_at = t_created_at)
-            logging.info('----------------------add thread----------------:\t'+t_party_id)
-            session.add(topic)
-            session.commit()
+            
+            existsrecords = session.query(Topic).filter(Topic.url==turl).filter(Topic.third_party_id==t_party_id).all()
+            if existsrecords:
+                topicuuid=existsrecords[0].uuid
+                logging.info('-----------------exist thread-----------------:\t'+existsrecords[0].third_party_id)
+            else:
+                topicuuid = str(uuid.uuid4())
+                created_td = td.parent.find('td',{'class':'author'})
+                t_created_at = created_td.p.getText().strip()
+                t_last_update = created_td.find_next_sibling('td',{'class':'author'}).p.a['title']
+                t_created_at= datetime.strptime(t_created_at,'%Y-%m-%d')
+                t_last_update= datetime.strptime(t_last_update,'%Y-%m-%d %H:%M')
+                logging.info('------------------------------------------')
+                logging.info('name:\t'+tname)
+                logging.info('third party id:\t'+t_party_id)
+                logging.info('url:\t'+turl)
+                logging.info('created at:\t'+str(t_created_at))
+                logging.info('last update:\t'+str(t_last_update))
+                topic = Topic(uuid = topicuuid,name = tname,url = turl,third_party_id = t_party_id,forum_uuid = '9f6c5c53-e995-1033-a072-e7fc3b303faa',created_at = t_created_at)
+                logging.info('----------------------add thread----------------:\t'+t_party_id)
+                session.add(topic)
+                session.commit()
             session.close()
             parse_posts(topicuuid,turl)
             
@@ -163,6 +169,7 @@ def parse_posts(topicuuid,url):
         Session.configure(bind= engine)
         session = Session()
         posts=[]
+        time.sleep(2)
         if i>0:
             purl = url+'&page='+str(i+1)
             response = request.get(purl)
@@ -179,14 +186,18 @@ def parse_posts(topicuuid,url):
             if not pdate:
                 continue
             else:
-                pdate=datetime.strptime(pdate['title'],'%Y-%m-%d %H:%M:%S')
-            logging.info('pid:\t'+pdiv['id'][10:])
-            logging.info('member name:\t'+pname)
-            logging.info('body:\t'+str(len(pbody)))
-            logging.info('pdate:\t'+str(pdate))
-            post = Post(uuid = str(uuid.uuid4()),thread_uuid = topicuuid,third_party_id=pid,member_name=pname,body=pbody,created_at=pdate)
-            posts.append(post)
-            logging.info('----------------------add post----------------:\t'+pid)
+                postnum = session.query(Post).filter(Post.third_party_id==pid).count()
+                if postnum >0:
+                    logging.info('------------------------exists post--------------:\t'+pid)
+                else:
+                    pdate=datetime.strptime(pdate['title'],'%Y-%m-%d %H:%M:%S')
+                    logging.info('pid:\t'+pdiv['id'][10:])
+                    logging.info('member name:\t'+pname)
+                    logging.info('body:\t'+str(len(pbody)))
+                    logging.info('pdate:\t'+str(pdate))
+                    post = Post(uuid = str(uuid.uuid4()),thread_uuid = topicuuid,third_party_id=pid,member_name=pname,body=pbody,created_at=pdate)
+                    posts.append(post)
+                    logging.info('----------------------add post----------------:\t'+pid)
         if posts:
             session.bulk_save_objects(posts)
             session.flush()
