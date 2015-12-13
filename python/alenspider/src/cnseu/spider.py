@@ -49,7 +49,6 @@ def parse_item(url):
     logging.info('------------------parse url---------:\t'+url)
     for i in range(totalpage):
         if i>0:
-#             break
             purl = url[:-6]+str(i+1)+'.html'
             response = request.get(purl)
             soup = BeautifulSoup(response.content,'lxml')
@@ -69,11 +68,11 @@ def parse_topic(soup):
         else:
             created_at = created_at.getText().strip()
         created_at = datetime.strptime(created_at,'%Y-%m-%d')
-        print '---------------------------------------'
-        print 'id:\t',tid
-        print 'name:\t',link.getText().strip()
-        print 'url:\t',link['href']
-        print 'created_at:\t',created_at
+        logging.info('--------------parsing topic:\t'+tid)
+        logging.info('third party id:\t'+tid)
+        logging.info('name:\t'+link.getText().strip())
+        logging.info('url:\t'+link['href'])
+        logging.info('created_at:\t'+str(created_at))
         parse_posts(link['href'])
         
 def parse_posts(url):
@@ -91,19 +90,26 @@ def parse_posts(url):
             soup = BeautifulSoup(response.content,'lxml')
         else:
             purl = url
-        print '------------------------------'
-        print '----url:\t',purl
+        logging.info('----------------parsing post at:\t'+purl+'-------------')
     
         pdivs = soup.findAll('div',id=re.compile('post_\d+'))
         for pdiv in pdivs:
             authdiv = pdiv.find('div',{'class':'authi'})
             pid = pdiv['id'][5:]
             pbody = pdiv.find('td',id='postmessage_'+pid)
-            print '----post id:\t',pid
-            print '----name:\t',authdiv.getText().strip()
-            print '----date:\t',pdiv.find('em',id='authorposton'+pid).getText()[3:].strip()
+            pdate = pdiv.find('em',id='authorposton'+pid).span
+            if pdate:
+                pdate = pdate['title']
+            else:
+                pdate = pdiv.find('em',id='authorposton'+pid).getText()[3:].strip()
+            logging.info(pdate)
+            pdate = datetime.strptime(pdate,'%Y-%m-%d %H:%M:%S')
+            logging.info('----post id:\t'+pid)
+            logging.info('----name:\t'+authdiv.getText().strip())
+            logging.info('----date:\t'+str(pdate))
+            
             if pbody:
-                print '----body:\t',len(pbody.getText())
+                logging.info('----body length:\t'+str(len(pbody.getText())))
     
 
 if __name__ == '__main__':
