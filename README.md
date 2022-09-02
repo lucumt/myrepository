@@ -1,2 +1,5 @@
-# myscripts
-This project is used to store some of my code written by Python,Golang or Linux
+> 记录自己工作和学习中一些有价值的脚本信息[^1]
+
+
+
+[^1]: 不涉及到本人就职的各公司的业务信息。
