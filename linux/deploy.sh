@@ -118,11 +118,11 @@ function load_image(){
 
    # 拼接成docker要执行字符串
    if [[ $type == 1 ]]; then
-       docker_command="docker run -d -p $node_port:8080 --restart=always --name $module_name $image_name"
+       docker_command="docker run -d -p $node_port:8080 --name $module_name $image_name"
    elif [[ $type == 2 && $module_name == "idp-gateway" ]]; then
-       docker_command="docker run -d -p $node_port:$node_port -e 'PORT=$node_port' --restart=always --name $module_name $image_name"
+       docker_command="docker run -d -p $node_port:$node_port -e 'PORT=$node_port' --name $module_name $image_name"
    else
-       docker_command="docker run -d -p $node_port:$node_port -p $dubbo_port:$dubbo_port -e 'PORT=$node_port' -e 'DUBBO_IP_TO_REGISTRY=$server_ip' --restart=always --name $module_name $image_name"
+       docker_command="docker run -d -p $node_port:$node_port -p $dubbo_port:$dubbo_port -e 'PORT=$node_port' -e 'DUBBO_IP_TO_REGISTRY=$server_ip'  --name $module_name $image_name"
    fi
 
    printf "要执行的命令为:\n$docker_command\n"
