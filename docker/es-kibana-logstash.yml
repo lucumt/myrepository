@@ -1,0 +1,136 @@
+version: '3.3'
+services:
+  idp-es01:
+    image: elasticsearch:7.17.5
+    restart: always
+    container_name: idp-es01
+    environment:
+      - node.name=idp-es01
+      - cluster.name=idp-es-cluster
+      - discovery.seed_hosts=idp-es02,idp-es03
+      - cluster.initial_master_nodes=idp-es01,idp-es02,idp-es03
+      - bootstrap.memory_lock=true
+      - http.port=9201
+      - node.master=true
+      - node.data=true
+      - http.cors.allow-origin=*
+      - http.cors.enabled=true
+      - TAKE_FILE_OWNERSHIP=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - ./es1/logs:/usr/share/elasticsearch/logs:rw
+      - ./es1/data:/usr/share/elasticsearch/data:rw
+      - ./es1/config:/usr/share/elasticsearch/config:rw
+      - ./es1/plugins:/usr/share/elasticsearch/plugins
+    ports:
+      - 39101:9201
+    networks:
+      - idp-es-network
+  idp-es02:
+    restart: always
+    image: elasticsearch:7.17.5
+    container_name: idp-es02
+    environment:
+      - node.name=idp-es02
+      - cluster.name=idp-es-cluster
+      - discovery.seed_hosts=idp-es01,idp-es03
+      - cluster.initial_master_nodes=idp-es01,idp-es02,idp-es03
+      - bootstrap.memory_lock=true
+      - http.port=9202
+      - node.master=true
+      - node.data=true
+      - http.cors.allow-origin=*
+      - http.cors.enabled=true
+      - TAKE_FILE_OWNERSHIP=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - ./es2/logs:/usr/share/elasticsearch/logs:rw
+      - ./es2/data:/usr/share/elasticsearch/data:rw
+      - ./es2/config:/usr/share/elasticsearch/config:rw
+      - ./es2/plugins:/usr/share/elasticsearch/plugins
+    ports:
+      - 39102:9202
+    networks:
+      - idp-es-network
+  idp-es03:
+    restart: always
+    image: elasticsearch:7.17.5
+    container_name: idp-es03
+    environment:
+      - node.name=idp-es03
+      - cluster.name=idp-es-cluster
+      - discovery.seed_hosts=idp-es01,idp-es02
+      - cluster.initial_master_nodes=idp-es01,idp-es02,idp-es03
+      - bootstrap.memory_lock=true
+      - http.port=9203
+      - node.master=true
+      - node.data=true
+      - http.cors.allow-origin=*
+      - http.cors.enabled=true
+      - TAKE_FILE_OWNERSHIP=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - ./es3/logs:/usr/share/elasticsearch/logs:rw
+      - ./es3/data:/usr/share/elasticsearch/data:rw
+      - ./es3/config:/usr/share/elasticsearch/config:rw
+      - ./es3/plugins:/usr/share/elasticsearch/plugins
+    ports:
+      - 39103:9203
+    networks:
+      - idp-es-network
+  idp-kibana:
+    restart: always
+    image: kibana:7.17.5
+    container_name: idp-kibana
+    depends_on:
+      - idp-es01
+      - idp-es02
+      - idp-es03 #kibana在elasticsearch启动之后再启动
+    environment:
+      SERVER_PUBLICBASEURL: http://10.30.22.55:39100
+      ELASTICSEARCH_HOSTS: http://10.30.22.55:39101 #设置访问elasticsearch的地址
+      I18N_LOCALE: zh-CN
+      ELASTICSEARCH_USERNAME: elastic
+      ELASTICSEARCH_PASSWORD: 0UYMfgz1M6YN8fYfrXp4    #elastic密码
+    ports:
+      - 39100:5601
+    networks:
+      - idp-es-network
+  logstash:
+    restart: always
+    image: logstash:7.17.5
+    container_name: idp-logstash
+    environment:
+      xpack.monitoring.elasticsearch.hosts: "http://10.30.5.170:39101"
+      xpack.monitoring.elasticsearch.username: "elastic"
+      xpack.monitoring.elasticsearch.password: "0UYMfgz1M6YN8fYfrXp4"
+    volumes:
+      - ./logstash/pipeline:/usr/share/logstash/pipeline
+    depends_on:
+      - idp-es01
+      - idp-es02
+      - idp-es03
+    links:
+      - idp-es01:es01
+      - idp-es02:es02
+      - idp-es03:es03
+    ports:
+      - 4560:4560
+    networks:
+      - idp-es-network
+
+networks:
+  idp-es-network :
+    driver: bridge
