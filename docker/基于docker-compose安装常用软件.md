@@ -163,7 +163,7 @@ services:
 
 * `my.cnf`文件
 
-  ```bash
+  ```ini
   [mysqld]
   pid-file        = /var/run/mysqld/mysqld.pid
   socket          = /var/run/mysqld/mysqld.sock
